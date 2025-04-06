@@ -1,0 +1,29 @@
+from fastapi import FastAPI
+from mcp_server import MCPServer
+
+app = FastAPI()
+mcp = MCPServer(app, "WhatsApp Image Sender", "1.0")
+
+@mcp.tool()
+def send_image(image_url: str, phone_numbers: list):
+    """
+    Send an image to multiple WhatsApp numbers.
+
+    :param image_url: URL of the image to send.
+    :param phone_numbers: List of recipient phone numbers in E.164 format.
+    """
+    for number in phone_numbers:
+        # Call the WhatsApp API to send the image
+        response = send_whatsapp_image(image_url, number)
+        if not response.ok:
+            return {"status": "failed", "number": number, "error": response.text}
+    return {"status": "success"}
+
+def send_whatsapp_image(image_url, phone_number):
+    # Implement the API call to WhatsApp Business API
+    # This function should handle authentication and sending the image
+    pass
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
