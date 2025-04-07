@@ -33,9 +33,13 @@ ENV/
 *.swp
 *.swo
 
-# Logs
+# Logs and Error Images
+logs/
+error_images/
 *.log
-error.png
+*.png
+*.jpg
+*.jpeg
 
 # Temporary files
 temp_uploads/ 

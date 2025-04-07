@@ -12,11 +12,9 @@ from dotenv import load_dotenv
 import pandas as pd
 from datetime import datetime
 from selenium.webdriver.common.keys import Keys
-from PIL import Image
-import win32clipboard
-from io import BytesIO
 import subprocess
 import platform
+import uuid
 
 app = Flask(__name__)
 
@@ -27,8 +25,15 @@ load_dotenv()
 TRACKING_FOLDER = 'message_tracking'
 MESSAGE_LOG_FILE = os.path.join(TRACKING_FOLDER, 'message_log.xlsx')
 
-# Create tracking folder if it doesn't exist
-os.makedirs(TRACKING_FOLDER, exist_ok=True)
+# Constants for file storage
+UPLOAD_FOLDER = 'uploaded_images'
+TEMP_FOLDER = 'temp_uploads'
+ERROR_FOLDER = 'error_images'
+LOGS_FOLDER = 'logs'
+
+# Create necessary directories
+for folder in [TRACKING_FOLDER, UPLOAD_FOLDER, TEMP_FOLDER, ERROR_FOLDER, LOGS_FOLDER]:
+    os.makedirs(folder, exist_ok=True)
 
 def update_tracking_log(phone, message_type, content, status, error_message=""):
     """
@@ -111,6 +116,57 @@ def send_to_clipboard(image_path):
             pass
         return False
 
+def save_uploaded_image(file):
+    """Save uploaded image with a unique filename"""
+    try:
+        if not file:
+            print("No file provided")
+            return None
+            
+        # Generate unique filename
+        original_filename = file.filename
+        if not original_filename:
+            print("No filename provided")
+            return None
+            
+        file_ext = os.path.splitext(original_filename)[1].lower()
+        if not file_ext:
+            print("No file extension found")
+            return None
+            
+        # Check if extension is allowed
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif'}
+        if file_ext not in allowed_extensions:
+            print(f"Invalid file extension: {file_ext}")
+            return None
+            
+        # Create unique filename
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        
+        # Ensure upload folder exists
+        if not os.path.exists(UPLOAD_FOLDER):
+            os.makedirs(UPLOAD_FOLDER)
+            print(f"Created upload folder: {UPLOAD_FOLDER}")
+        
+        # Save in upload folder with absolute path
+        save_path = os.path.abspath(os.path.join(UPLOAD_FOLDER, unique_filename))
+        print(f"Attempting to save file to: {save_path}")
+        
+        # Save the file
+        file.save(save_path)
+        
+        # Verify file was saved
+        if os.path.exists(save_path):
+            print(f"Successfully saved image as: {save_path}")
+            return save_path
+        else:
+            print("File was not saved successfully")
+            return None
+            
+    except Exception as e:
+        print(f"Error saving image: {str(e)}")
+        return None
+
 class WhatsAppBot:
     def __init__(self):
         print("Initializing WhatsApp Bot...")
@@ -166,7 +222,7 @@ class WhatsAppBot:
                 # Create service with specific binary location
                 service = Service(
                     executable_path=driver_path,
-                    log_path="chromedriver.log"  # Add logging
+                    log_path=os.path.join("logs", "chromedriver.log")
                 )
                 
             except Exception as e:
@@ -185,7 +241,7 @@ class WhatsAppBot:
                         print(f"Found local ChromeDriver at: {path}")
                         service = Service(
                             executable_path=path,
-                            log_path="chromedriver.log"  # Add logging
+                            log_path=os.path.join("logs", "chromedriver.log")
                         )
                         driver_found = True
                         break
@@ -232,23 +288,25 @@ class WhatsAppBot:
             except Exception as e:
                 print(f"Error waiting for WhatsApp Web: {str(e)}")
                 if self.driver:
-                    self.driver.save_screenshot("error.png")
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    self.driver.save_screenshot(os.path.join("error_images", f"init_error_{timestamp}.png"))
                 return False
             
         except Exception as e:
             print(f"Error in setup_driver: {str(e)}")
             if hasattr(self, 'driver') and self.driver:
                 try:
-                    self.driver.save_screenshot("error.png")
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    self.driver.save_screenshot(os.path.join("error_images", f"setup_error_{timestamp}.png"))
                 except:
                     pass
                 self.driver.quit()
             return False
 
-    def send_message(self, phone_number, message):
+    def send_message(self, phone, message):
         try:
             # Format the URL with the phone number and message
-            url = f"https://web.whatsapp.com/send?phone={phone_number}&text={message}"
+            url = f"https://web.whatsapp.com/send?phone={phone}&text={message}"
             self.driver.get(url)
             
             # Wait for the send button to be clickable
@@ -258,82 +316,159 @@ class WhatsAppBot:
             time.sleep(2)  # Wait for message to be sent
             
             # Update tracking log
-            update_tracking_log(phone_number, "text", message, "success")
+            update_tracking_log(phone, "text", message, "success")
             return True
             
         except Exception as e:
-            error_msg = str(e)
-            print(f"Error sending message to {phone_number}: {error_msg}")
-            # Update tracking log with error
-            update_tracking_log(phone_number, "text", message, "failed", error_msg)
+            print(f"Error sending message: {str(e)}")
+            if self.driver:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                self.driver.save_screenshot(os.path.join("error_images", f"message_error_{timestamp}.png"))
             return False
 
-    def send_image(self, phone_number, image_path, caption=None):
-        """Send an image with optional caption to a WhatsApp contact"""
+    def send_image(self, phone, image_path, caption=None):
+        """Send an image to a WhatsApp contact with optional caption"""
         try:
-            print(f"\nSending image to {phone_number}")
+            print(f"\nAttempting to send image to {phone}")
             
-            # Validate image file
-            if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image file not found: {image_path}")
-            
-            # Convert to absolute path and validate image
-            abs_image_path = os.path.abspath(image_path)
-            if not any(abs_image_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif']):
-                raise ValueError("Unsupported image format. Use JPG, PNG, or GIF")
-            
-            # Open chat directly
-            url = f"https://web.whatsapp.com/send?phone={phone_number}"
+            # Open chat with the phone number
+            url = f"https://web.whatsapp.com/send?phone={phone}"
+            print(f"Opening URL: {url}")
             self.driver.get(url)
             
             # Wait for chat to load
             print("Waiting for chat to load...")
+            time.sleep(5)  # Ensure chat is fully loaded
+            
+            # Search for the chat (in case direct URL doesn't work)
+            try:
+                search_box = self.wait.until(
+                    EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='3']"))
+                )
+                search_box.click()
+                search_box.send_keys(phone)
+                time.sleep(2)
+                search_box.send_keys(Keys.ENTER)
+            except Exception as e:
+                print(f"Error searching for chat: {str(e)}")
+            
+            # Wait for chat to be ready
             self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[title="Type a message"]')))
             time.sleep(2)
             
-            # Click attachment button
-            print("Opening attachment menu...")
-            attach_button = self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'span[data-icon="attach-menu-plus"]'))
-            )
-            self.driver.execute_script("arguments[0].click();", attach_button)
-            time.sleep(1)
+            # Attach file
+            try:
+                # Try multiple attachment button selectors
+                attachment_selectors = [
+                    "//span[@data-icon='clip']",
+                    "//span[@data-testid='attach-menu']",
+                    "//span[@data-testid='attach-menu-plus']"
+                ]
+                
+                attachment_btn = None
+                for selector in attachment_selectors:
+                    try:
+                        attachment_btn = self.wait.until(
+                            EC.element_to_be_clickable((By.XPATH, selector))
+                        )
+                        print(f"Found attachment button with selector: {selector}")
+                        break
+                    except:
+                        continue
+                
+                if not attachment_btn:
+                    raise Exception("Could not find attachment button")
+                
+                attachment_btn.click()
+                time.sleep(1)
+            except Exception as e:
+                print(f"Error clicking attachment button: {str(e)}")
+                raise
             
-            # Send image file
-            print("Sending image...")
-            file_input = self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="file"]'))
-            )
-            file_input.send_keys(abs_image_path)
-            time.sleep(2)
+            # Input image
+            try:
+                image_input = self.wait.until(
+                    EC.presence_of_element_located((By.XPATH, "//input[@accept='image/*,video/mp4,video/3gpp,video/quicktime']"))
+                )
+                abs_image_path = os.path.abspath(image_path)
+                print(f"Uploading image from: {abs_image_path}")
+                image_input.send_keys(abs_image_path)
+            except Exception as e:
+                print(f"Error uploading image: {str(e)}")
+                raise
+            
+            # Wait for image preview
+            time.sleep(3)
             
             # Add caption if provided
             if caption:
-                print("Adding caption...")
-                caption_box = self.wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, 'div[contenteditable="true"]'))
-                )
-                caption_box.send_keys(caption)
-                time.sleep(1)
+                try:
+                    # Try multiple caption box selectors
+                    caption_selectors = [
+                        "//div[@contenteditable='true'][@data-tab='6']",
+                        "//div[@contenteditable='true'][contains(@data-testid, 'media-caption-input')]"
+                    ]
+                    
+                    caption_box = None
+                    for selector in caption_selectors:
+                        try:
+                            caption_box = self.wait.until(
+                                EC.presence_of_element_located((By.XPATH, selector))
+                            )
+                            print(f"Found caption box with selector: {selector}")
+                            break
+                        except:
+                            continue
+                    
+                    if caption_box:
+                        caption_box.clear()
+                        caption_box.send_keys(caption)
+                        time.sleep(1)
+                except Exception as e:
+                    print(f"Error adding caption: {str(e)}")
             
-            # Click send button
-            print("Clicking send button...")
-            send_button = self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'span[data-icon="send"]'))
-            )
-            self.driver.execute_script("arguments[0].click();", send_button)
-            time.sleep(2)
+            # Send image
+            try:
+                # Try multiple send button selectors
+                send_selectors = [
+                    "//span[@data-icon='send']",
+                    "//span[@data-testid='send']"
+                ]
+                
+                send_button = None
+                for selector in send_selectors:
+                    try:
+                        send_button = self.wait.until(
+                            EC.element_to_be_clickable((By.XPATH, selector))
+                        )
+                        print(f"Found send button with selector: {selector}")
+                        break
+                    except:
+                        continue
+                
+                if not send_button:
+                    raise Exception("Could not find send button")
+                
+                send_button.click()
+            except Exception as e:
+                print(f"Error sending image: {str(e)}")
+                raise
+            
+            # Wait for message to be sent
+            time.sleep(3)
             
             print("Image sent successfully!")
-            update_tracking_log(phone_number, "image", f"Image: {os.path.basename(image_path)}", "success")
+            update_tracking_log(phone, "image", f"Image: {os.path.basename(image_path)}", "success")
             return True
             
         except Exception as e:
-            error_msg = str(e)
-            print(f"Error sending image: {error_msg}")
+            print(f"Error sending image: {str(e)}")
             if self.driver:
-                self.driver.save_screenshot("error.png")
-            update_tracking_log(phone_number, "image", f"Image: {os.path.basename(image_path)}", "failed", error_msg)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                error_screenshot = os.path.join("error_images", f"image_error_{timestamp}.png")
+                self.driver.save_screenshot(error_screenshot)
+                print(f"Error screenshot saved to: {error_screenshot}")
+            update_tracking_log(phone, "image", f"Image: {os.path.basename(image_path)}", "failed", str(e))
             return False
 
     def close(self):
@@ -455,13 +590,8 @@ def index():
                 </div>
                 
                 <div class="form-group">
-                    <label for="message">Message (optional if sending image):</label>
-                    <textarea id="message" name="message" placeholder="Enter your message"></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label for="image">Image (optional if sending message):</label>
-                    <input type="file" id="image" name="image" accept="image/*">
+                    <label for="message">Message:</label>
+                    <textarea id="message" name="message" placeholder="Enter your message" required></textarea>
                 </div>
                 
                 <button type="submit" id="submitButton" class="button">Send</button>
@@ -472,6 +602,10 @@ def index():
                 <form action="/send_message_bulk" method="post" enctype="multipart/form-data">
                     <label for="file">Upload CSV/Excel file for bulk messaging:</label>
                     <input type="file" id="file" name="file" accept=".csv,.xlsx,.xls" required>
+                    <div class="form-group">
+                        <label for="bulk_message">Message for bulk sending:</label>
+                        <textarea id="bulk_message" name="message" placeholder="Enter your message" required></textarea>
+                    </div>
                     <button type="submit" class="button">Send Bulk Messages</button>
                 </form>
             </div>
@@ -514,12 +648,11 @@ def index():
                 const form = document.getElementById('messageForm');
                 const statusDiv = document.getElementById('messageStatus');
                 const submitButton = document.getElementById('submitButton');
-                const imageInput = document.getElementById('image');
                 const messageInput = document.getElementById('message');
                 
-                // Check if at least one of message or image is provided
-                if (!messageInput.value && !imageInput.files.length) {
-                    statusDiv.textContent = 'Please provide either a message or an image';
+                // Check if message is provided
+                if (!messageInput.value) {
+                    statusDiv.textContent = 'Please provide a message';
                     statusDiv.className = 'status error';
                     return;
                 }
@@ -560,45 +693,13 @@ def index():
 def init_bot():
     global whatsapp_bot
     try:
-        # Create a new bot instance if none exists or if driver is None
-        if whatsapp_bot is None or whatsapp_bot.driver is None:
-            print("\nInitializing new WhatsApp bot instance...")
-            whatsapp_bot = WhatsAppBot()
-            setup_success = whatsapp_bot.setup_driver()
-            
-            # Check if WhatsApp Web is actually loaded
-            if setup_success and whatsapp_bot.driver:
-                try:
-                    # Additional check for WhatsApp Web elements
-                    WebDriverWait(whatsapp_bot.driver, 5).until(lambda driver: (
-                        driver.find_elements(By.CSS_SELECTOR, 'div[title="Type a message"]') or
-                        driver.find_elements(By.XPATH, '//div[@data-testid="chat-list"]') or
-                        driver.find_elements(By.XPATH, '//div[@data-testid="qrcode"]')
-                    ))
-                    return jsonify({"success": True, "message": "Bot initialized successfully"})
-                except:
-                    pass
-            
-            if whatsapp_bot.driver:
-                whatsapp_bot.driver.save_screenshot("init_error.png")
-            return jsonify({"success": False, "message": "Failed to initialize bot driver"})
-        
-        # Bot is already running, verify it's working
-        try:
-            WebDriverWait(whatsapp_bot.driver, 5).until(lambda driver: (
-                driver.find_elements(By.CSS_SELECTOR, 'div[title="Type a message"]') or
-                driver.find_elements(By.XPATH, '//div[@data-testid="chat-list"]')
-            ))
-            return jsonify({"success": True, "message": "Bot is already initialized"})
-        except:
-            # Bot exists but might be in a bad state
-            if whatsapp_bot.driver:
-                whatsapp_bot.driver.quit()
-            whatsapp_bot = None
-            return jsonify({"success": False, "message": "Bot needs to be reinitialized"})
-        
+        whatsapp_bot = WhatsAppBot()
+        success = whatsapp_bot.setup_driver()
+        if success:
+            return jsonify({"success": True, "message": "WhatsApp bot initialized successfully"})
+        else:
+            return jsonify({"success": False, "message": "Failed to initialize WhatsApp bot"})
     except Exception as e:
-        print(f"Error initializing bot: {str(e)}")
         return jsonify({"success": False, "message": str(e)})
 
 @app.route('/send_message', methods=['POST'])
@@ -611,7 +712,8 @@ def send_message():
         # Get form data
         phone = request.form.get('phone')
         message = request.form.get('message', '')
-        image = request.files.get('image')
+        
+        print(f"Received request - Phone: {phone}")
         
         # Check if phone is a list of numbers (comma-separated)
         phone_numbers = [p.strip() for p in phone.split(',')] if phone else []
@@ -620,53 +722,33 @@ def send_message():
         if not phone_numbers:
             return jsonify({"success": False, "message": "Phone number(s) are required"})
             
-        if not message and not image:
-            return jsonify({"success": False, "message": "Please provide either a message or an image"})
+        if not message:
+            return jsonify({"success": False, "message": "Message is required"})
         
         # Process each phone number
         results = []
+        
         for phone in phone_numbers:
             # Remove any spaces and ensure phone number format
             phone = phone.strip().replace(" ", "")
             if not phone.startswith("+"):
                 phone = "+" + phone
-                
-            # If image is provided, send it
-            if image:
-                try:
-                    # Create temp directory if it doesn't exist
-                    temp_dir = 'temp_uploads'
-                    os.makedirs(temp_dir, exist_ok=True)
-                    
-                    # Save the image
-                    image_path = os.path.join(temp_dir, image.filename)
-                    image.save(image_path)
-                    
-                    # Send image with optional caption
-                    success = whatsapp_bot.send_image(phone, image_path, message if message else None)
-                    
-                    # Clean up
-                    os.remove(image_path)
-                    
-                    results.append({
-                        "phone": phone,
-                        "status": "success" if success else "failed",
-                        "type": "image"
-                    })
-                    
-                except Exception as e:
-                    results.append({
-                        "phone": phone,
-                        "status": "failed",
-                        "type": "image",
-                        "error": str(e)
-                    })
-            else:
-                # Send text message only
+            
+            try:
+                # Send text message
                 success = whatsapp_bot.send_message(phone, message)
                 results.append({
                     "phone": phone,
                     "status": "success" if success else "failed",
+                    "type": "text"
+                })
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Error sending to {phone}: {error_msg}")
+                results.append({
+                    "phone": phone,
+                    "status": "failed",
+                    "error": error_msg,
                     "type": "text"
                 })
         
@@ -687,51 +769,142 @@ def send_message():
             })
             
     except Exception as e:
+        error_msg = str(e)
+        print(f"Error in send_message route: {error_msg}")
+        return jsonify({
+            "success": False,
+            "message": f"Error: {error_msg}"
+        })
+
+def format_phone_number(number):
+    """
+    Convert phone number to standard format
+    - Handles scientific notation
+    - Ensures country code is present
+    - Removes any non-digit characters
+    """
+    try:
+        # Convert to string and remove scientific notation
+        str_number = f"{float(number):.0f}"
+        
+        # Remove any non-digit characters
+        digits_only = ''.join(filter(str.isdigit, str_number))
+        
+        # Ensure country code (assuming Indian numbers)
+        if not digits_only.startswith('91'):
+            digits_only = '91' + digits_only
+        
+        # Trim to ensure correct length
+        digits_only = digits_only[-12:]
+        
+        return digits_only
+    except Exception as e:
+        print(f"Error formatting phone number {number}: {str(e)}")
+        return None
+
+@app.route('/send_message_bulk', methods=['POST'])
+def send_message_bulk():
+    global whatsapp_bot
+    if not whatsapp_bot or whatsapp_bot.driver is None:
+        return jsonify({"success": False, "message": "WhatsApp bot not initialized. Please initialize first."})
+    
+    try:
+        # Debug: Print all form data and files
+        print("Form Data:", request.form)
+        print("Files:", request.files)
+        
+        # Get the uploaded file
+        file = request.files.get('file')
+        if not file:
+            print("No file uploaded")
+            return jsonify({"success": False, "message": "No file uploaded"})
+        
+        # Save the file temporarily
+        temp_dir = 'temp_uploads'
+        os.makedirs(temp_dir, exist_ok=True)
+        file_path = os.path.join(temp_dir, file.filename)
+        file.save(file_path)
+        
+        # Read phone numbers from the file
+        try:
+            if file.filename.endswith('.csv'):
+                df = pd.read_csv(file_path)
+            elif file.filename.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(file_path)
+            else:
+                print(f"Unsupported file format: {file.filename}")
+                return jsonify({"success": False, "message": "Unsupported file format"})
+            
+            # Debug: Print DataFrame info
+            print("DataFrame Columns:", df.columns)
+            print("DataFrame Head:\n", df.head())
+        except Exception as e:
+            print(f"Error reading file: {str(e)}")
+            return jsonify({"success": False, "message": f"Error reading file: {str(e)}"})
+        
+        # Validate phone number column
+        if df.empty or len(df.columns) == 0:
+            print("File is empty or has no columns")
+            return jsonify({"success": False, "message": "File is empty or has no columns"})
+        
+        # Get phone numbers from the first column and format them
+        try:
+            # Find the first column with phone numbers
+            phone_column = df.columns[0]
+            
+            # Format phone numbers
+            phones = []
+            for number in df[phone_column]:
+                formatted_number = format_phone_number(number)
+                if formatted_number:
+                    phones.append(formatted_number)
+            
+            print(f"Extracted {len(phones)} phone numbers")
+            if not phones:
+                print("No valid phone numbers found")
+                return jsonify({"success": False, "message": "No valid phone numbers found"})
+        except Exception as e:
+            print(f"Error extracting phone numbers: {str(e)}")
+            return jsonify({"success": False, "message": f"Error extracting phone numbers: {str(e)}"})
+        
+        # Determine message - PRIORITIZE USER INPUT
+        message = request.form.get('message', '').strip()
+        print(f"Message from form: {message}")
+        
+        # Validate message
+        if not message:
+            return jsonify({"success": False, "message": "Message is required"})
+        
+        print(f"Final message to be sent: {message}")
+        
+        # Send messages to all phone numbers
+        results = whatsapp_bot.send_message_to_multiple(phones, message)
+        
+        # Clean up
+        os.remove(file_path)
+        
+        # Check if all messages were sent successfully
+        all_success = all(result["status"] == "success" for result in results)
+        
+        if all_success:
+            return jsonify({
+                "success": True,
+                "message": "All messages sent successfully",
+                "details": results
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": "Some messages failed to send",
+                "details": results
+            })
+            
+    except Exception as e:
+        print(f"Unexpected error in send_message_bulk: {str(e)}")
         return jsonify({
             "success": False,
             "message": f"Error: {str(e)}"
         })
-
-@app.route('/send_image', methods=['POST'])
-def send_image():
-    global whatsapp_bot
-    if not whatsapp_bot:
-        return jsonify({"status": "error", "message": "WhatsApp bot not initialized"}), 400
-    
-    data = request.json
-    phones = data.get('phones')  # Now expecting an array of phone numbers
-    image_path = data.get('image_path')
-    caption = data.get('caption', '')
-    
-    if not phones or not image_path:
-        return jsonify({"status": "error", "message": "Phone numbers array and image path are required"}), 400
-    
-    if not isinstance(phones, list):
-        return jsonify({"status": "error", "message": "Phones must be an array of phone numbers"}), 400
-    
-    results = []
-    for phone in phones:
-        success = whatsapp_bot.send_image(phone, image_path, caption)
-        results.append({
-            "phone": phone,
-            "status": "success" if success else "failed"
-        })
-    
-    # Check if all images were sent successfully
-    all_success = all(result["status"] == "success" for result in results)
-    
-    if all_success:
-        return jsonify({
-            "status": "success",
-            "message": "All images sent successfully",
-            "details": results
-        })
-    else:
-        return jsonify({
-            "status": "partial_success" if any(result["status"] == "success" for result in results) else "error",
-            "message": "Some or all images failed to send",
-            "details": results
-        }), 500
 
 @app.route('/get_message_log', methods=['GET'])
 def get_message_log():
@@ -751,81 +924,6 @@ def get_message_log():
         return jsonify({
             "status": "error",
             "message": f"Error reading message log: {str(e)}"
-        }), 500
-
-@app.route('/send_message_bulk', methods=['POST'])
-def send_message_bulk():
-    global whatsapp_bot
-    if not whatsapp_bot:
-        return jsonify({"status": "error", "message": "WhatsApp bot not initialized"}), 400
-    
-    data = request.json
-    file_path = data.get('file_path')  # Path to CSV/Excel file
-    message = data.get('message')
-    group = data.get('group', None)  # Optional group filter
-    
-    if not file_path or not message:
-        return jsonify({"status": "error", "message": "File path and message are required"}), 400
-    
-    # Read phone numbers from file
-    phones = read_phone_numbers(file_path, group)
-    if not phones:
-        return jsonify({"status": "error", "message": "Failed to read phone numbers from file"}), 400
-    
-    results = whatsapp_bot.send_message_to_multiple(phones, message)
-    
-    # Check if all messages were sent successfully
-    all_success = all(result["status"] == "success" for result in results)
-    
-    if all_success:
-        return jsonify({
-            "status": "success",
-            "message": "All messages sent successfully",
-            "details": results
-        })
-    else:
-        return jsonify({
-            "status": "partial_success" if any(result["status"] == "success" for result in results) else "error",
-            "message": "Some or all messages failed to send",
-            "details": results
-        }), 500
-
-@app.route('/send_image_bulk', methods=['POST'])
-def send_image_bulk():
-    global whatsapp_bot
-    if not whatsapp_bot:
-        return jsonify({"status": "error", "message": "WhatsApp bot not initialized"}), 400
-    
-    data = request.json
-    file_path = data.get('file_path')  # Path to CSV/Excel file
-    image_path = data.get('image_path')
-    caption = data.get('caption', '')
-    group = data.get('group', None)  # Optional group filter
-    
-    if not file_path or not image_path:
-        return jsonify({"status": "error", "message": "File path and image path are required"}), 400
-    
-    # Read phone numbers from file
-    phones = read_phone_numbers(file_path, group)
-    if not phones:
-        return jsonify({"status": "error", "message": "Failed to read phone numbers from file"}), 400
-    
-    results = whatsapp_bot.send_message_to_multiple(phones, caption)
-    
-    # Check if all images were sent successfully
-    all_success = all(result["status"] == "success" for result in results)
-    
-    if all_success:
-        return jsonify({
-            "status": "success",
-            "message": "All images sent successfully",
-            "details": results
-        })
-    else:
-        return jsonify({
-            "status": "partial_success" if any(result["status"] == "success" for result in results) else "error",
-            "message": "Some or all images failed to send",
-            "details": results
         }), 500
 
 if __name__ == '__main__':
