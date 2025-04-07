@@ -776,6 +776,33 @@ def send_message():
             "message": f"Error: {error_msg}"
         })
 
+def find_phone_column(df):
+    """
+    Find the column containing phone numbers in the DataFrame
+    Returns the name of the column containing phone numbers
+    """
+    # Common column names for phone numbers
+    phone_columns = [
+        'phone', 'phone_number', 'mobile', 'contact', 'number', 'tel',
+        'telephone', 'cell', 'cellphone', 'phone no', 'mobile no',
+        'contact no', 'mob', 'mob_no', 'mobile_number'
+    ]
+    
+    # First, check for exact matches in column names
+    for col in df.columns:
+        if col.lower().replace(' ', '_') in phone_columns:
+            return col
+    
+    # If no exact match, try to find a column with numeric values
+    for col in df.columns:
+        # Check if the column contains numbers (allowing for scientific notation)
+        if df[col].dtype in ['int64', 'float64'] or \
+           (df[col].dtype == 'object' and df[col].str.contains(r'^\d+$|^\d+\.\d+e\+\d+$', na=True).any()):
+            return col
+    
+    # If still no match, return the first column as default
+    return df.columns[0]
+
 def format_phone_number(number):
     """
     Convert phone number to standard format
@@ -784,20 +811,34 @@ def format_phone_number(number):
     - Removes any non-digit characters
     """
     try:
-        # Convert to string and remove scientific notation
-        str_number = f"{float(number):.0f}"
+        # Handle NaN or empty values
+        if pd.isna(number) or str(number).strip() == '':
+            return None
+            
+        # Convert to string and handle scientific notation
+        if isinstance(number, float):
+            str_number = f"{float(number):.0f}"
+        else:
+            str_number = str(number)
         
         # Remove any non-digit characters
         digits_only = ''.join(filter(str.isdigit, str_number))
         
-        # Ensure country code (assuming Indian numbers)
-        if not digits_only.startswith('91'):
-            digits_only = '91' + digits_only
+        # Handle different formats
+        if len(digits_only) <= 10:  # Only local number
+            digits_only = '91' + digits_only.zfill(10)
+        elif len(digits_only) > 12:  # Too many digits
+            digits_only = digits_only[-12:]  # Take last 12 digits
+        elif len(digits_only) == 11 and digits_only.startswith('0'):  # Remove leading 0
+            digits_only = '91' + digits_only[1:]
+        elif len(digits_only) == 12 and not digits_only.startswith('91'):  # Wrong country code
+            digits_only = '91' + digits_only[-10:]
         
-        # Trim to ensure correct length
-        digits_only = digits_only[-12:]
+        # Validate final number
+        if len(digits_only) == 12 and digits_only.startswith('91'):
+            return digits_only
+        return None
         
-        return digits_only
     except Exception as e:
         print(f"Error formatting phone number {number}: {str(e)}")
         return None
@@ -825,7 +866,7 @@ def send_message_bulk():
         file_path = os.path.join(temp_dir, file.filename)
         file.save(file_path)
         
-        # Read phone numbers from the file
+        # Read the file
         try:
             if file.filename.endswith('.csv'):
                 df = pd.read_csv(file_path)
@@ -842,32 +883,49 @@ def send_message_bulk():
             print(f"Error reading file: {str(e)}")
             return jsonify({"success": False, "message": f"Error reading file: {str(e)}"})
         
-        # Validate phone number column
+        # Validate DataFrame
         if df.empty or len(df.columns) == 0:
             print("File is empty or has no columns")
             return jsonify({"success": False, "message": "File is empty or has no columns"})
         
-        # Get phone numbers from the first column and format them
+        # Find and extract phone numbers
         try:
-            # Find the first column with phone numbers
-            phone_column = df.columns[0]
+            # Find the column containing phone numbers
+            phone_column = find_phone_column(df)
+            print(f"Using column '{phone_column}' for phone numbers")
             
             # Format phone numbers
             phones = []
-            for number in df[phone_column]:
+            invalid_numbers = []
+            
+            for idx, number in enumerate(df[phone_column]):
                 formatted_number = format_phone_number(number)
                 if formatted_number:
                     phones.append(formatted_number)
+                else:
+                    invalid_numbers.append(f"Row {idx + 2}: {number}")  # +2 because idx starts at 0 and we skip header
             
-            print(f"Extracted {len(phones)} phone numbers")
+            print(f"Extracted {len(phones)} valid phone numbers")
+            if invalid_numbers:
+                print(f"Found {len(invalid_numbers)} invalid numbers:")
+                for num in invalid_numbers:
+                    print(f"  - {num}")
+            
             if not phones:
                 print("No valid phone numbers found")
-                return jsonify({"success": False, "message": "No valid phone numbers found"})
+                return jsonify({
+                    "success": False,
+                    "message": "No valid phone numbers found",
+                    "details": {
+                        "invalid_numbers": invalid_numbers
+                    }
+                })
+                
         except Exception as e:
             print(f"Error extracting phone numbers: {str(e)}")
             return jsonify({"success": False, "message": f"Error extracting phone numbers: {str(e)}"})
         
-        # Determine message - PRIORITIZE USER INPUT
+        # Get message from form
         message = request.form.get('message', '').strip()
         print(f"Message from form: {message}")
         
@@ -886,18 +944,17 @@ def send_message_bulk():
         # Check if all messages were sent successfully
         all_success = all(result["status"] == "success" for result in results)
         
-        if all_success:
-            return jsonify({
-                "success": True,
-                "message": "All messages sent successfully",
-                "details": results
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "message": "Some messages failed to send",
-                "details": results
-            })
+        # Include information about invalid numbers in the response
+        response = {
+            "success": all_success,
+            "message": "All messages sent successfully" if all_success else "Some messages failed to send",
+            "details": {
+                "results": results,
+                "invalid_numbers": invalid_numbers if invalid_numbers else []
+            }
+        }
+        
+        return jsonify(response)
             
     except Exception as e:
         print(f"Unexpected error in send_message_bulk: {str(e)}")
