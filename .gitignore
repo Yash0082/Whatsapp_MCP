@@ -19,6 +19,7 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -26,6 +27,8 @@ var/
 # Virtual Environment
 venv/
 ENV/
+env/
+.env
 
 # IDE
 .idea/
@@ -33,13 +36,18 @@ ENV/
 *.swp
 *.swo
 
-# Logs and Error Images
+# Logs and Temp Files
 logs/
-error_images/
 *.log
-*.png
-*.jpg
-*.jpeg
+temp_uploads/
+error_images/
+chrome_profile/
+chromedriver.log
 
-# Temporary files
-temp_uploads/ 
+# WhatsApp specific
+uploaded_images/
+message_tracking/
+
+# System Files
+.DS_Store
+Thumbs.db 
