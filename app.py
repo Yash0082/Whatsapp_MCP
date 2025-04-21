@@ -91,81 +91,81 @@ def read_phone_numbers(file_path, group=None):
         print(f"Error reading phone numbers: {str(e)}")
         return None
 
-def send_to_clipboard(image_path):
-    """Helper function to copy image to clipboard"""
-    try:
-        print(f"Opening image from: {image_path}")
-        image = Image.open(image_path)
-        output = BytesIO()
-        image.convert('RGB').save(output, 'BMP')
-        data = output.getvalue()[14:]  # Remove header
-        output.close()
+# def send_to_clipboard(image_path):
+#     """Helper function to copy image to clipboard"""
+#     try:
+#         print(f"Opening image from: {image_path}")
+#         image = Image.open(image_path)
+#         output = BytesIO()
+#         image.convert('RGB').save(output, 'BMP')
+#         data = output.getvalue()[14:]  # Remove header
+#         output.close()
         
-        print("Opening clipboard...")
-        win32clipboard.OpenClipboard()
-        win32clipboard.EmptyClipboard()
-        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
-        win32clipboard.CloseClipboard()
-        print("Image successfully copied to clipboard")
-        return True
-    except Exception as e:
-        print(f"Error in send_to_clipboard: {str(e)}")
-        try:
-            win32clipboard.CloseClipboard()
-        except:
-            pass
-        return False
+#         print("Opening clipboard...")
+#         win32clipboard.OpenClipboard()
+#         win32clipboard.EmptyClipboard()
+#         win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+#         win32clipboard.CloseClipboard()
+#         print("Image successfully copied to clipboard")
+#         return True
+#     except Exception as e:
+#         print(f"Error in send_to_clipboard: {str(e)}")
+#         try:
+#             win32clipboard.CloseClipboard()
+#         except:
+#             pass
+#         return False
 
-def save_uploaded_image(file):
-    """Save uploaded image with a unique filename"""
-    try:
-        if not file:
-            print("No file provided")
-            return None
+# def save_uploaded_image(file):
+#     """Save uploaded image with a unique filename"""
+#     try:
+#         if not file:
+#             print("No file provided")
+#             return None
             
-        # Generate unique filename
-        original_filename = file.filename
-        if not original_filename:
-            print("No filename provided")
-            return None
+#         # Generate unique filename
+#         original_filename = file.filename
+#         if not original_filename:
+#             print("No filename provided")
+#             return None
             
-        file_ext = os.path.splitext(original_filename)[1].lower()
-        if not file_ext:
-            print("No file extension found")
-            return None
+#         file_ext = os.path.splitext(original_filename)[1].lower()
+#         if not file_ext:
+#             print("No file extension found")
+#             return None
             
-        # Check if extension is allowed
-        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif'}
-        if file_ext not in allowed_extensions:
-            print(f"Invalid file extension: {file_ext}")
-            return None
+#         # Check if extension is allowed
+#         allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif'}
+#         if file_ext not in allowed_extensions:
+#             print(f"Invalid file extension: {file_ext}")
+#             return None
             
-        # Create unique filename
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
+#         # Create unique filename
+#         unique_filename = f"{uuid.uuid4()}{file_ext}"
         
-        # Ensure upload folder exists
-        if not os.path.exists(UPLOAD_FOLDER):
-            os.makedirs(UPLOAD_FOLDER)
-            print(f"Created upload folder: {UPLOAD_FOLDER}")
+#         # Ensure upload folder exists
+#         if not os.path.exists(UPLOAD_FOLDER):
+#             os.makedirs(UPLOAD_FOLDER)
+#             print(f"Created upload folder: {UPLOAD_FOLDER}")
         
-        # Save in upload folder with absolute path
-        save_path = os.path.abspath(os.path.join(UPLOAD_FOLDER, unique_filename))
-        print(f"Attempting to save file to: {save_path}")
+#         # Save in upload folder with absolute path
+#         save_path = os.path.abspath(os.path.join(UPLOAD_FOLDER, unique_filename))
+#         print(f"Attempting to save file to: {save_path}")
         
-        # Save the file
-        file.save(save_path)
+#         # Save the file
+#         file.save(save_path)
         
-        # Verify file was saved
-        if os.path.exists(save_path):
-            print(f"Successfully saved image as: {save_path}")
-            return save_path
-        else:
-            print("File was not saved successfully")
-            return None
+#         # Verify file was saved
+#         if os.path.exists(save_path):
+#             print(f"Successfully saved image as: {save_path}")
+#             return save_path
+#         else:
+#             print("File was not saved successfully")
+#             return None
             
-    except Exception as e:
-        print(f"Error saving image: {str(e)}")
-        return None
+#     except Exception as e:
+#         print(f"Error saving image: {str(e)}")
+#         return None
 
 class WhatsAppBot:
     def __init__(self):
@@ -326,150 +326,150 @@ class WhatsAppBot:
                 self.driver.save_screenshot(os.path.join("error_images", f"message_error_{timestamp}.png"))
             return False
 
-    def send_image(self, phone, image_path, caption=None):
-        """Send an image to a WhatsApp contact with optional caption"""
-        try:
-            print(f"\nAttempting to send image to {phone}")
+    # def send_image(self, phone, image_path, caption=None):
+    #     """Send an image to a WhatsApp contact with optional caption"""
+    #     try:
+    #         print(f"\nAttempting to send image to {phone}")
             
-            # Open chat with the phone number
-            url = f"https://web.whatsapp.com/send?phone={phone}"
-            print(f"Opening URL: {url}")
-            self.driver.get(url)
+    #         # Open chat with the phone number
+    #         url = f"https://web.whatsapp.com/send?phone={phone}"
+    #         print(f"Opening URL: {url}")
+    #         self.driver.get(url)
             
-            # Wait for chat to load
-            print("Waiting for chat to load...")
-            time.sleep(5)  # Ensure chat is fully loaded
+    #         # Wait for chat to load
+    #         print("Waiting for chat to load...")
+    #         time.sleep(5)  # Ensure chat is fully loaded
             
-            # Search for the chat (in case direct URL doesn't work)
-            try:
-                search_box = self.wait.until(
-                    EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='3']"))
-                )
-                search_box.click()
-                search_box.send_keys(phone)
-                time.sleep(2)
-                search_box.send_keys(Keys.ENTER)
-            except Exception as e:
-                print(f"Error searching for chat: {str(e)}")
+    #         # Search for the chat (in case direct URL doesn't work)
+    #         try:
+    #             search_box = self.wait.until(
+    #                 EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='3']"))
+    #             )
+    #             search_box.click()
+    #             search_box.send_keys(phone)
+    #             time.sleep(2)
+    #             search_box.send_keys(Keys.ENTER)
+    #         except Exception as e:
+    #             print(f"Error searching for chat: {str(e)}")
             
-            # Wait for chat to be ready
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[title="Type a message"]')))
-            time.sleep(2)
+    #         # Wait for chat to be ready
+    #         self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div[title="Type a message"]')))
+    #         time.sleep(2)
             
-            # Attach file
-            try:
-                # Try multiple attachment button selectors
-                attachment_selectors = [
-                    "//span[@data-icon='clip']",
-                    "//span[@data-testid='attach-menu']",
-                    "//span[@data-testid='attach-menu-plus']"
-                ]
+    #         # Attach file
+    #         try:
+    #             # Try multiple attachment button selectors
+    #             attachment_selectors = [
+    #                 "//span[@data-icon='clip']",
+    #                 "//span[@data-testid='attach-menu']",
+    #                 "//span[@data-testid='attach-menu-plus']"
+    #             ]
                 
-                attachment_btn = None
-                for selector in attachment_selectors:
-                    try:
-                        attachment_btn = self.wait.until(
-                            EC.element_to_be_clickable((By.XPATH, selector))
-                        )
-                        print(f"Found attachment button with selector: {selector}")
-                        break
-                    except:
-                        continue
+    #             attachment_btn = None
+    #             for selector in attachment_selectors:
+    #                 try:
+    #                     attachment_btn = self.wait.until(
+    #                         EC.element_to_be_clickable((By.XPATH, selector))
+    #                     )
+    #                     print(f"Found attachment button with selector: {selector}")
+    #                     break
+    #                 except:
+    #                     continue
                 
-                if not attachment_btn:
-                    raise Exception("Could not find attachment button")
+    #             if not attachment_btn:
+    #                 raise Exception("Could not find attachment button")
                 
-                attachment_btn.click()
-                time.sleep(1)
-            except Exception as e:
-                print(f"Error clicking attachment button: {str(e)}")
-                raise
+    #             attachment_btn.click()
+    #             time.sleep(1)
+    #         except Exception as e:
+    #             print(f"Error clicking attachment button: {str(e)}")
+    #             raise
             
-            # Input image
-            try:
-                image_input = self.wait.until(
-                    EC.presence_of_element_located((By.XPATH, "//input[@accept='image/*,video/mp4,video/3gpp,video/quicktime']"))
-                )
-                abs_image_path = os.path.abspath(image_path)
-                print(f"Uploading image from: {abs_image_path}")
-                image_input.send_keys(abs_image_path)
-            except Exception as e:
-                print(f"Error uploading image: {str(e)}")
-                raise
+    #         # Input image
+    #         try:
+    #             image_input = self.wait.until(
+    #                 EC.presence_of_element_located((By.XPATH, "//input[@accept='image/*,video/mp4,video/3gpp,video/quicktime']"))
+    #             )
+    #             abs_image_path = os.path.abspath(image_path)
+    #             print(f"Uploading image from: {abs_image_path}")
+    #             image_input.send_keys(abs_image_path)
+    #         except Exception as e:
+    #             print(f"Error uploading image: {str(e)}")
+    #             raise
             
-            # Wait for image preview
-            time.sleep(3)
+    #         # Wait for image preview
+    #         time.sleep(3)
             
-            # Add caption if provided
-            if caption:
-                try:
-                    # Try multiple caption box selectors
-                    caption_selectors = [
-                        "//div[@contenteditable='true'][@data-tab='6']",
-                        "//div[@contenteditable='true'][contains(@data-testid, 'media-caption-input')]"
-                    ]
+    #         # Add caption if provided
+    #         if caption:
+    #             try:
+    #                 # Try multiple caption box selectors
+    #                 caption_selectors = [
+    #                     "//div[@contenteditable='true'][@data-tab='6']",
+    #                     "//div[@contenteditable='true'][contains(@data-testid, 'media-caption-input')]"
+    #                 ]
                     
-                    caption_box = None
-                    for selector in caption_selectors:
-                        try:
-                            caption_box = self.wait.until(
-                                EC.presence_of_element_located((By.XPATH, selector))
-                            )
-                            print(f"Found caption box with selector: {selector}")
-                            break
-                        except:
-                            continue
+    #                 caption_box = None
+    #                 for selector in caption_selectors:
+    #                     try:
+    #                         caption_box = self.wait.until(
+    #                             EC.presence_of_element_located((By.XPATH, selector))
+    #                         )
+    #                         print(f"Found caption box with selector: {selector}")
+    #                         break
+    #                     except:
+    #                         continue
                     
-                    if caption_box:
-                        caption_box.clear()
-                        caption_box.send_keys(caption)
-                        time.sleep(1)
-                except Exception as e:
-                    print(f"Error adding caption: {str(e)}")
+    #                 if caption_box:
+    #                     caption_box.clear()
+    #                     caption_box.send_keys(caption)
+    #                     time.sleep(1)
+    #             except Exception as e:
+    #                 print(f"Error adding caption: {str(e)}")
             
-            # Send image
-            try:
-                # Try multiple send button selectors
-                send_selectors = [
-                    "//span[@data-icon='send']",
-                    "//span[@data-testid='send']"
-                ]
+    #         # Send image
+    #         try:
+    #             # Try multiple send button selectors
+    #             send_selectors = [
+    #                 "//span[@data-icon='send']",
+    #                 "//span[@data-testid='send']"
+    #             ]
                 
-                send_button = None
-                for selector in send_selectors:
-                    try:
-                        send_button = self.wait.until(
-                            EC.element_to_be_clickable((By.XPATH, selector))
-                        )
-                        print(f"Found send button with selector: {selector}")
-                        break
-                    except:
-                        continue
+    #             send_button = None
+    #             for selector in send_selectors:
+    #                 try:
+    #                     send_button = self.wait.until(
+    #                         EC.element_to_be_clickable((By.XPATH, selector))
+    #                     )
+    #                     print(f"Found send button with selector: {selector}")
+    #                     break
+    #                 except:
+    #                     continue
                 
-                if not send_button:
-                    raise Exception("Could not find send button")
+    #             if not send_button:
+    #                 raise Exception("Could not find send button")
                 
-                send_button.click()
-            except Exception as e:
-                print(f"Error sending image: {str(e)}")
-                raise
+    #             send_button.click()
+    #         except Exception as e:
+    #             print(f"Error sending image: {str(e)}")
+    #             raise
             
-            # Wait for message to be sent
-            time.sleep(3)
+    #         # Wait for message to be sent
+    #         time.sleep(3)
             
-            print("Image sent successfully!")
-            update_tracking_log(phone, "image", f"Image: {os.path.basename(image_path)}", "success")
-            return True
+    #         print("Image sent successfully!")
+    #         update_tracking_log(phone, "image", f"Image: {os.path.basename(image_path)}", "success")
+    #         return True
             
-        except Exception as e:
-            print(f"Error sending image: {str(e)}")
-            if self.driver:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                error_screenshot = os.path.join("error_images", f"image_error_{timestamp}.png")
-                self.driver.save_screenshot(error_screenshot)
-                print(f"Error screenshot saved to: {error_screenshot}")
-            update_tracking_log(phone, "image", f"Image: {os.path.basename(image_path)}", "failed", str(e))
-            return False
+    #     except Exception as e:
+    #         print(f"Error sending image: {str(e)}")
+    #         if self.driver:
+    #             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    #             error_screenshot = os.path.join("error_images", f"image_error_{timestamp}.png")
+    #             self.driver.save_screenshot(error_screenshot)
+    #             print(f"Error screenshot saved to: {error_screenshot}")
+    #         update_tracking_log(phone, "image", f"Image: {os.path.basename(image_path)}", "failed", str(e))
+    #         return False
 
     def close(self):
         if self.driver:
